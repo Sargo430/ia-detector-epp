@@ -1,0 +1,15 @@
+python -m venv venv
+
+# Activar entorno virtual:
+# En Windows:
+venv\Scripts\activate
+
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Instalar resto de dependencias
+pip install ultralytics
+pip install opencv-python
+pip install opencv-python-headless
+pip install customtkinter
+pip install pillow
+pip install numpy
