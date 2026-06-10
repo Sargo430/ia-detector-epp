@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  edge-agent:
+    build:
+      context: .
+      target: cpu          # cambiar a 'jetson' en dispositivo NVIDIA
+    env_file: .env
+    volumes:
+      - ./models:/app/models    # monta tu modelo .pt aquí
+      - ./config:/app/config    # monta cameras.json aquí
+    restart: unless-stopped
+    # Para acceso a GPU NVIDIA (descomentar en Jetson/PC con GPU):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    network_mode: host           # acceso directo a cámaras en red local
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

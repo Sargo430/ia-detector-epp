@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,12 +6,15 @@ from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import settings
 from app.api.v1.router import api_router
+from app.websockets.redis_subscriber import alert_subscriber
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print(f"🚀  {settings.APP_NAME} v{settings.APP_VERSION} [{settings.APP_ENV}]")
+    # Iniciar el subscriber de Redis en segundo plano
+    asyncio.create_task(alert_subscriber())
     yield
     # Shutdown
     print("👋  Shutting down...")

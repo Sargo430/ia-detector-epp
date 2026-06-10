@@ -1,0 +1,14 @@
+[
+  {
+    "id": "uuid-de-camara-en-el-backend",
+    "name": "Webcam local",
+    "rtsp_url": "0",
+    "fps_capture": 15,
+    "enabled": true,
+    "detection_config": {
+      "confidence_threshold": 0.60,
+      "event_types": ["intrusion"],
+      "zones": []
+    }
+  }
+]
