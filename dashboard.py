@@ -77,6 +77,26 @@ class EPPDashboard:
         self.detection_thread = None
         self.frame_cache = {}
         self.fps_history = deque(maxlen=30)
+        self.alert_config = {
+            'no_hardhat': {'active': True, 'cooldown': 5, 'threshold': 3, 'last_alert': 0, 'count': 0},
+            'no_vest': {'active': True, 'cooldown': 5, 'threshold': 3, 'last_alert': 0, 'count': 0},
+            'no_mask': {'active': True, 'cooldown': 5, 'threshold': 3, 'last_alert': 0, 'count': 0},
+            'no_gloves': {'active': True, 'cooldown': 5, 'threshold': 3, 'last_alert': 0, 'count': 0},
+            'no_goggles': {'active': True, 'cooldown': 5, 'threshold': 3, 'last_alert': 0, 'count': 0},
+        }
+        
+        # Cola de detecciones para acumular
+        self.detection_buffer = deque(maxlen=30)
+        
+        # Historial de alertas emitidas
+        self.alert_history = deque(maxlen=50)
+        
+        # Contadores por cámara
+        self.camara_violaciones = {}
+        
+        # Modo prueba
+        self.test_mode_active = False
+        
         
         # Variables de resolución (agregar estas dos líneas)
         self.vista_ancho = 640
@@ -287,9 +307,72 @@ class EPPDashboard:
         # Log de eventos
         ctk.CTkLabel(self.panel_stats, text="📝 Eventos", 
                     font=("Arial", 14, "bold")).pack(pady=5)
-        
         self.log_text = ctk.CTkTextbox(self.panel_stats, height=300)
         self.log_text.pack(fill="both", expand=True, padx=10, pady=5)
+        
+        # ===== NUEVA SECCIÓN: ALERTAS EPP - AGREGAR AQUÍ =====
+        alertas_frame = ctk.CTkFrame(self.panel_stats)
+        alertas_frame.pack(fill="x", padx=10, pady=10)
+        
+        ctk.CTkLabel(alertas_frame, text="🚨 ALERTAS EPP", 
+                    font=("Arial", 14, "bold"), text_color="red").pack(pady=5)
+        
+        # Configuración de umbrales
+        config_frame = ctk.CTkFrame(alertas_frame)
+        config_frame.pack(fill="x", pady=5)
+        
+        ctk.CTkLabel(config_frame, text="Umbral (seg):", 
+                    font=("Arial", 10)).pack(side="left", padx=5)
+        
+        self.umbral_spinbox = ctk.CTkEntry(config_frame, width=60)
+        self.umbral_spinbox.insert(0, "3")
+        self.umbral_spinbox.pack(side="left", padx=5)
+        
+        ctk.CTkButton(
+            config_frame,
+            text="Aplicar",
+            command=self.aplicar_umbral,
+            width=60,
+            height=25
+        ).pack(side="left", padx=5)
+        
+        # Checkbox modo prueba
+        self.test_mode_var = ctk.BooleanVar(value=False)
+        self.chk_test_mode = ctk.CTkCheckBox(
+            alertas_frame,
+            text="🎮 Modo Prueba (simular alertas)",
+            variable=self.test_mode_var,
+            command=self.toggle_test_mode
+        )
+        self.chk_test_mode.pack(pady=5)
+        
+        # Frame para alertas activas
+        ctk.CTkLabel(alertas_frame, text="Alertas Recientes:", 
+                    font=("Arial", 12, "bold")).pack(pady=5)
+        
+        self.alertas_listbox = ctk.CTkTextbox(alertas_frame, height=100, font=("Arial", 11))
+        self.alertas_listbox.pack(fill="x", padx=10, pady=5)
+        
+        # Contadores por tipo de EPP
+        contadores_frame = ctk.CTkFrame(alertas_frame)
+        contadores_frame.pack(fill="x", pady=5)
+        
+        self.lbl_no_hardhat = ctk.CTkLabel(contadores_frame, text="⛑️ Sin Casco: 0", font=("Arial", 11))
+        self.lbl_no_hardhat.pack(anchor="w", padx=10)
+        
+        self.lbl_no_vest = ctk.CTkLabel(contadores_frame, text="🦺 Sin Chaleco: 0", font=("Arial", 11))
+        self.lbl_no_vest.pack(anchor="w", padx=10)
+        
+        self.lbl_no_mask = ctk.CTkLabel(contadores_frame, text="😷 Sin Mascarilla: 0", font=("Arial", 11))
+        self.lbl_no_mask.pack(anchor="w", padx=10)
+        
+        self.lbl_no_gloves = ctk.CTkLabel(contadores_frame, text="🧤 Sin Guantes: 0", font=("Arial", 11))
+        self.lbl_no_gloves.pack(anchor="w", padx=10)
+        
+        self.lbl_no_goggles = ctk.CTkLabel(contadores_frame, text="🥽 Sin Gafas: 0", font=("Arial", 11))
+        self.lbl_no_goggles.pack(anchor="w", padx=10)
+        # ===== FIN DE NUEVA SECCIÓN =====
+        
         
     # Se eliminaron las funciones relacionadas con el cambio de dispositivo.
     def detectar_camaras_locales(self):
@@ -568,7 +651,128 @@ class EPPDashboard:
             self.detection_active = False
             self.btn_iniciar.configure(text="🚀 INICIAR DETECCIÓN", fg_color="green")
             self.agregar_log("🛑 Detección detenida")
-
+        
+    # ===== NUEVOS MÉTODOS DE ALERTAS - AGREGAR A PARTIR DE AQUÍ =====
+    
+    def toggle_test_mode(self):
+        """Activar/desactivar modo prueba para simular alertas"""
+        if self.test_mode_var.get():
+            self.agregar_log("🎮 Modo prueba activado - Simulando alertas cada 2 segundos")
+            self.test_mode_active = True
+            if self.detection_active:
+                self.simular_alertas_prueba()
+        else:
+            self.agregar_log("🎮 Modo prueba desactivado")
+            self.test_mode_active = False
+    
+    def simular_alertas_prueba(self):
+        """Simular alertas periódicas para modo prueba"""
+        if not self.test_mode_var.get() or not self.detection_active:
+            return
+        
+        # Simular detección de faltantes
+        tipos = ['no_hardhat', 'no_vest', 'no_mask', 'no_gloves', 'no_goggles']
+        tipo = tipos[int(time.time()) % len(tipos)]
+        
+        self.procesar_alerta(tipo, "Cámara Test", 0.95)
+        
+        # Programar siguiente simulación
+        self.root.after(2000, self.simular_alertas_prueba)
+    
+    def aplicar_umbral(self):
+        """Aplicar nuevo umbral de tiempo para alertas"""
+        try:
+            nuevo_umbral = float(self.umbral_spinbox.get())
+            if nuevo_umbral > 0:
+                for key in self.alert_config:
+                    self.alert_config[key]['threshold'] = nuevo_umbral
+                self.agregar_log(f"⚙️ Umbral de alerta cambiado a {nuevo_umbral} segundos")
+            else:
+                raise ValueError
+        except ValueError:
+            messagebox.showwarning("Error", "Ingrese un número válido (mayor a 0)")
+    
+    def procesar_alerta(self, tipo_falta, camara_nombre, confianza):
+        """Procesar una detección de falta de EPP"""
+        config = self.alert_config[tipo_falta]
+        
+        if not config['active']:
+            return False
+        
+        # Incrementar contador para este tipo
+        config['count'] += 1
+        
+        # Verificar si debemos emitir alerta
+        tiempo_actual = time.time()
+        
+        # Si pasó el cooldown, podemos emitir nueva alerta
+        if tiempo_actual - config['last_alert'] >= config['cooldown']:
+            # Verificar si se superó el umbral
+            if self.test_mode_active or config['count'] >= config['threshold']:
+                # Emitir alerta
+                nombres = {
+                    'no_hardhat': '⛑️ SIN CASCO',
+                    'no_vest': '🦺 SIN CHALECO',
+                    'no_mask': '😷 SIN MASCARILLA',
+                    'no_gloves': '🧤 SIN GUANTES',
+                    'no_goggles': '🥽 SIN GAFAS'
+                }
+                
+                nombre_alerta = nombres.get(tipo_falta, tipo_falta)
+                mensaje = f"🚨 ALERTA: {nombre_alerta} detectado en {camara_nombre} (conf: {confianza:.0%})"
+                
+                # Agregar al listbox de alertas
+                self.agregar_alerta_ui(mensaje)
+                
+                # Agregar al log del sistema
+                self.agregar_log(mensaje)
+                
+                # Actualizar contadores en UI
+                self.actualizar_contadores_ui()
+                
+                # Resetear contador y actualizar tiempo de última alerta
+                config['count'] = 0
+                config['last_alert'] = tiempo_actual
+                
+                return True
+        
+        return False
+    
+    def agregar_alerta_ui(self, mensaje):
+        """Agregar alerta a la lista visual"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        texto_alerta = f"[{timestamp}] {mensaje}\n"
+        
+        self.alertas_listbox.insert("end", texto_alerta)
+        self.alertas_listbox.see("end")
+        
+        # Mantener solo las últimas 10 alertas visibles
+        if int(self.alertas_listbox.index('end-1c').split('.')[0]) > 10:
+            self.alertas_listbox.delete("1.0", "2.0")
+    
+    def actualizar_contadores_ui(self):
+        """Actualizar los contadores de EPP en la UI"""
+        self.lbl_no_hardhat.configure(text=f"⛑️ Sin Casco: {self.alert_config['no_hardhat']['count']}")
+        self.lbl_no_vest.configure(text=f"🦺 Sin Chaleco: {self.alert_config['no_vest']['count']}")
+        self.lbl_no_mask.configure(text=f"😷 Sin Mascarilla: {self.alert_config['no_mask']['count']}")
+        self.lbl_no_gloves.configure(text=f"🧤 Sin Guantes: {self.alert_config['no_gloves']['count']}")
+        self.lbl_no_goggles.configure(text=f"🥽 Sin Gafas: {self.alert_config['no_goggles']['count']}")
+    
+    def mapear_clase_a_falta(self, class_name, confidence):
+        """
+        Mapear nombres de clases de YOLO a tipos de falta de EPP.
+        AJUSTA SEGÚN TUS CLASES REALES.
+        """
+        mapeo = {
+            'hardhat': 'no_hardhat',
+            'vest': 'no_vest',
+            'mask': 'no_mask',
+            'gloves': 'no_gloves',
+            'goggles': 'no_goggles'
+        }
+        return mapeo.get(class_name.lower(), None)
+    
+    # ===== FIN DE NUEVOS MÉTODOS =====
     def toggle_force_cpu(self, force: bool):
         """Handler para el checkbox 'Forzar CPU'.
         Si force=True moverá el modelo a CPU (si está cargado). Si force=False,
@@ -692,6 +896,25 @@ class EPPDashboard:
                         if result.boxes is not None:
                             detecciones_frame = len(result.boxes)
                             total_detecciones += detecciones_frame
+                            
+                            # ===== NUEVO: PROCESAR ALERTAS EPP =====
+                            # Obtener clases detectadas
+                            if hasattr(result, 'names') and result.boxes.cls is not None:
+                                for box, cls_id in zip(result.boxes, result.boxes.cls):
+                                    class_name = result.names[int(cls_id)]
+                                    confidence = float(box.conf[0]) if hasattr(box, 'conf') else 0.9
+                                    
+                                    # Si está en modo prueba, simular alertas
+                                    if self.test_mode_var.get():
+                                        tipos = ['no_hardhat', 'no_vest', 'no_mask', 'no_gloves', 'no_goggles']
+                                        tipo_random = tipos[int(time.time()) % len(tipos)]
+                                        self.procesar_alerta(tipo_random, cam['nombre'], confidence)
+                                    else:
+                                        # Modo real: mapear clase a falta
+                                        falta_tipo = self.mapear_clase_a_falta(class_name, confidence)
+                                        if falta_tipo:
+                                            self.procesar_alerta(falta_tipo, cam['nombre'], confidence)
+                            # ===== FIN DE PROCESAMIENTO ALERTAS =====
                     
                     time.sleep(0.001)
                 
